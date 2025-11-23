@@ -1,0 +1,307 @@
+#![allow(unexpected_cfgs)]
+
+use anchor_lang::prelude::*;
+
+declare_id!("3AaPEKEdJm6k8goX5kjpL9xuRPC6c8a1SuoQvaPi9hXt");
+
+pub mod constant;
+pub mod errors;
+mod events;
+mod instructions;
+pub mod state;
+pub mod discount;
+pub mod buyback;
+pub mod reflection;
+pub mod dao;
+pub mod airdrop;
+mod merkle;
+pub mod migration;
+pub mod authority;
+pub mod security;
+
+use instructions::*;
+use state::*;
+
+#[derive(Debug, AnchorSerialize, AnchorDeserialize, Copy, Clone, PartialEq)]
+pub enum SwapType {
+    Buy,  // Buy base token
+    Sell, // Sell base token
+}
+
+#[derive(Debug, AnchorSerialize, AnchorDeserialize, Copy, Clone, PartialEq)]
+pub enum SwapAmountType {
+    ExactInput,
+    ExactOutput,
+}
+
+#[program]
+pub mod token_mill {
+    use super::*;
+
+    pub fn create_config(
+        ctx: Context<CreateConfig>,
+        authority: Pubkey,
+        protocol_fee_recipient: Pubkey,
+        protocol_fee_share: u16,
+        referral_fee_share: u16,
+    ) -> Result<()> {
+        instructions::create_config::handler(
+            ctx,
+            authority,
+            protocol_fee_recipient,
+            protocol_fee_share,
+            referral_fee_share,
+        )
+    }
+
+    pub fn create_market(
+        ctx: Context<CreateMarket>,
+        name: String,
+        symbol: String,
+        uri: String,
+        total_supply: u64,
+        creator_fee_share: u16,
+        staking_fee_share: u16,
+    ) -> Result<()> {
+        instructions::create_market::handler(
+            ctx,
+            name,
+            symbol,
+            uri,
+            total_supply,
+            creator_fee_share,
+            staking_fee_share,
+        )
+    }
+
+    pub fn create_market_with_spl(
+        ctx: Context<CreateMarketWithSpl>,
+        name: String,
+        symbol: String,
+        uri: String,
+        total_supply: u64,
+        creator_fee_share: u16,
+        staking_fee_share: u16,
+    ) -> Result<()> {
+        instructions::create_market_with_spl::handler(
+            ctx,
+            name,
+            symbol,
+            uri,
+            total_supply,
+            creator_fee_share,
+            staking_fee_share,
+        )
+    }
+
+    pub fn set_market_prices(
+        ctx: Context<MarketSettingsUpdate>,
+        bid_prices: [u64; constant::PRICES_LENGTH],
+        ask_prices: [u64; constant::PRICES_LENGTH],
+    ) -> Result<()> {
+        instructions::set_market_prices::handler(ctx, bid_prices, ask_prices)
+    }
+
+    pub fn swap(
+        ctx: Context<Swap>,
+        swap_type: SwapType,
+        swap_amount_type: SwapAmountType,
+        amount: u64,
+        other_amount_threshold: u64,
+    ) -> Result<(u64, u64)> {
+        instructions::swap::handler(
+            ctx,
+            swap_type,
+            swap_amount_type,
+            amount,
+            other_amount_threshold,
+        )
+    }
+
+    pub fn buy(
+        ctx: Context<Purchase>,
+        swap_amount_type: u8,
+        amount: u64,
+    ) -> Result<(u64, u64)> {
+        instructions::purchase::handler(ctx, swap_amount_type, amount)
+    }
+
+    pub fn perform_buyback(ctx: Context<crate::buyback::PerformBuyback>, lamports: u64) -> Result<()> {
+        crate::buyback::handler(ctx, lamports)
+    }
+
+    pub fn claim_reflection(ctx: Context<crate::reflection::ClaimReflection>) -> Result<u64> {
+        crate::reflection::handler(ctx)
+    }
+
+    pub fn init_exclusion(ctx: Context<crate::dao::InitExclusion>) -> Result<()> {
+        crate::dao::init_handler(ctx)
+    }
+
+    pub fn update_exclusion(ctx: Context<crate::dao::UpdateExclusion>, add: bool, addr: Pubkey) -> Result<()> {
+        crate::dao::update_handler(ctx, add, addr)
+    }
+
+    pub fn init_airdrop(ctx: Context<crate::airdrop::InitAirdrop>, root: [u8;32], expiry: i64, bitmap_len: u32) -> Result<()> {
+        crate::airdrop::init_handler(ctx, root, expiry, bitmap_len)
+    }
+
+    pub fn claim_airdrop(ctx: Context<crate::airdrop::ClaimAirdrop>, index: u64, leaf: [u8;32], proof: Vec<[u8;32]>) -> Result<()> {
+        crate::airdrop::claim_handler(ctx, index, leaf, proof)
+    }
+
+    /// Buy using SOL (lamports) as quote asset. This enforces payment to the market PDA before minting.
+    pub fn buy(ctx: Context<instructions::purchase::Purchase>, swap_amount_type: u8, amount: u64) -> Result<(u64, u64)> {
+        instructions::purchase::handler(ctx, swap_amount_type, amount)
+    }
+
+    // Staking
+    pub fn create_staking(ctx: Context<CreateStaking>) -> Result<()> {
+        instructions::staking::create_staking::handler(ctx)
+    }
+
+    pub fn create_stake_position(ctx: Context<CreateStakePosition>) -> Result<()> {
+        instructions::staking::create_stake_position::handler(ctx)
+    }
+
+    pub fn deposit(ctx: Context<StakeUpdate>, amount: u64) -> Result<()> {
+        instructions::staking::deposit::handler(ctx, amount)
+    }
+
+    pub fn withdraw(ctx: Context<StakeUpdate>, amount: u64) -> Result<()> {
+        instructions::staking::withdraw::handler(ctx, amount)
+    }
+
+    pub fn claim_staking_rewards(ctx: Context<StakingRewardsClaim>) -> Result<u64> {
+        instructions::staking::claim_staking_rewards::handler(ctx)
+    }
+
+    // Vesting
+    pub fn create_vesting_plan(
+        ctx: Context<CreateVestingPlan>,
+        start: i64,
+        vesting_amount: u64,
+        vesting_duration: i64,
+        cliff_duration: i64,
+    ) -> Result<()> {
+        instructions::vesting::create_vesting_plan::handler(
+            ctx,
+            start,
+            vesting_amount,
+            vesting_duration,
+            cliff_duration,
+        )
+    }
+
+    pub fn release(ctx: Context<Release>) -> Result<u64> {
+        instructions::vesting::release::handler(ctx)
+    }
+
+    // Permissioned markets
+    pub fn lock_market(ctx: Context<LockMarket>, authority: Pubkey) -> Result<()> {
+        instructions::permissioned_markets::lock_market::handler(ctx, authority)
+    }
+
+    pub fn permissioned_swap(
+        ctx: Context<PermissionedSwap>,
+        swap_type: SwapType,
+        swap_amount_type: SwapAmountType,
+        amount: u64,
+        other_amount_threshold: u64,
+    ) -> Result<(u64, u64)> {
+        instructions::permissioned_markets::permissioned_swap::handler(
+            ctx,
+            swap_type,
+            swap_amount_type,
+            amount,
+            other_amount_threshold,
+        )
+    }
+
+    pub fn free_market(ctx: Context<FreeMarket>) -> Result<()> {
+        instructions::permissioned_markets::free_market::handler(ctx)
+    }
+
+    // Referrals
+    pub fn create_referral_account(
+        ctx: Context<CreateReferralAccount>,
+        referrer: Pubkey,
+    ) -> Result<()> {
+        instructions::referrals::create_referral_account::handler(ctx, referrer)
+    }
+
+    pub fn claim_referral_fees(ctx: Context<ClaimReferralFees>) -> Result<()> {
+        instructions::referrals::claim_referral_fees::handler(ctx)
+    }
+
+    // Creator instructions
+    pub fn update_creator(ctx: Context<MarketSettingsUpdate>, new_creator: Pubkey) -> Result<()> {
+        instructions::update_creator::handler(ctx, new_creator)
+    }
+
+    pub fn update_market_fee_shares(
+        ctx: Context<MarketSettingsUpdate>,
+        new_creator_fee_share: u16,
+        new_staking_fee_share: u16,
+    ) -> Result<()> {
+        instructions::update_market_fee_shares::handler(
+            ctx,
+            new_creator_fee_share,
+            new_staking_fee_share,
+        )
+    }
+
+    pub fn claim_creator_fees(ctx: Context<ClaimCreatorFees>) -> Result<()> {
+        instructions::claim_creator_fees::handler(ctx)
+    }
+
+    // Admin instructions
+    pub fn create_quote_asset_badge(ctx: Context<CreateQuoteAssetBadge>) -> Result<()> {
+        instructions::create_quote_asset_badge::handler(ctx)
+    }
+
+    pub fn update_quote_asset_badge(
+        ctx: Context<UpdateQuoteAssetBadge>,
+        status: QuoteTokenBadgeStatus,
+    ) -> Result<()> {
+        instructions::update_quote_asset_badge::handler(ctx, status)
+    }
+
+    pub fn update_default_fee_shares(
+        ctx: Context<ConfigUpdate>,
+        new_default_protocol_fee_share: u16,
+        new_referral_fee_share: u16,
+    ) -> Result<()> {
+        instructions::update_default_fee_shares::handler(
+            ctx,
+            new_default_protocol_fee_share,
+            new_referral_fee_share,
+        )
+    }
+
+    pub fn update_protocol_fee_recipient(
+        ctx: Context<ConfigUpdate>,
+        new_protocol_fee_recipient: Pubkey,
+    ) -> Result<()> {
+        instructions::update_protocol_fee_recipient::handler(ctx, new_protocol_fee_recipient)
+    }
+
+    pub fn perform_migration(ctx: Context<crate::migration::PerformMigration>, force: bool) -> Result<()> {
+        crate::migration::handler(ctx, force)
+    }
+
+    pub fn revoke_authorities(ctx: Context<crate::authority::RevokeAuthorities>) -> Result<()> {
+        crate::authority::handler(ctx)
+    }
+
+    pub fn transfer_config_ownership(
+        ctx: Context<ConfigUpdate>,
+        pending_authority: Option<Pubkey>,
+    ) -> Result<()> {
+        instructions::transfer_config_ownership::handler(ctx, pending_authority)
+    }
+
+    pub fn accept_config_ownership(ctx: Context<AcceptConfigOwnership>) -> Result<()> {
+        instructions::accept_config_ownership::handler(ctx)
+    }
+}
