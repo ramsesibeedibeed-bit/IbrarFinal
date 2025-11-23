@@ -1,0 +1,17 @@
+{
+  "programId": "REPLACE_RAYDIUM_PROGRAM_ID",
+  "poolKeys": {
+    "ammId": "REPLACE_AMM_ID",
+    "ammAuthority": "REPLACE_AMM_AUTHORITY",
+    "ammOpenOrders": "REPLACE_AMM_OPEN_ORDERS",
+    "ammTargetOrders": "REPLACE_AMM_TARGET_ORDERS",
+    "lpMintAddress": "REPLACE_LP_MINT",
+    "vaultA": "REPLACE_VAULT_A",
+    "vaultB": "REPLACE_VAULT_B",
+    "tokenAccountA": "REPLACE_TOKEN_A_ACCOUNT",
+    "tokenAccountB": "REPLACE_TOKEN_B_ACCOUNT",
+    "poolVersion": 4
+  },
+  "userSource": "REPLACE_USER_SOURCE_ATA",
+  "userDestination": "REPLACE_USER_DEST_ATA"
+}
